@@ -50,28 +50,28 @@ function solveSudokuHelper(grid) {
 
 export function countSolutions(grid, limit = 2) {
   const newGrid = grid.map(row => [...row])
-  let count = 0
-  countSolutionsHelper(newGrid, limit, () => { count++ })
-  return count
+  const state = { count: 0 }
+  countSolutionsHelper(newGrid, limit, state)
+  return state.count
 }
 
-function countSolutionsHelper(grid, limit, callback) {
+function countSolutionsHelper(grid, limit, state) {
   for (let row = 0; row < GRID_SIZE; row++) {
     for (let col = 0; col < GRID_SIZE; col++) {
       if (grid[row][col] === 0) {
         for (let num = 1; num <= GRID_SIZE; num++) {
           if (isValidMove(grid, row, col, num)) {
             grid[row][col] = num
-            countSolutionsHelper(grid, limit, callback)
+            countSolutionsHelper(grid, limit, state)
             grid[row][col] = 0
-            if (count >= limit) return
+            if (state.count >= limit) return
           }
         }
         return
       }
     }
   }
-  callback()
+  state.count++
 }
 
 export function generateFullGrid() {
