@@ -11,7 +11,7 @@
           <h3>游戏设置</h3>
           
           <div class="select-wrapper" style="margin-bottom: 15px;">
-            <select v-model="selectedVariant" @change="startNewGame">
+            <select v-model="selectedVariant">
               <option value="standard">标准数独</option>
               <option value="diagonal">对角线数独</option>
               <option value="irregular">不规则数独</option>
@@ -20,7 +20,7 @@
           </div>
 
           <div class="select-wrapper" style="margin-bottom: 15px;">
-            <select v-model="difficulty" @change="startNewGame">
+            <select v-model="difficulty">
               <option value="easy">简单</option>
               <option value="medium">中等</option>
               <option value="hard">困难</option>
