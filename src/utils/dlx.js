@@ -1,6 +1,7 @@
 class DLXNode {
-  constructor(id = null) {
+  constructor(id = null, rowData = null) {
     this.id = id;
+    this.rowData = rowData;
     this.left = this;
     this.right = this;
     this.up = this;
@@ -38,13 +39,13 @@ class DLX {
     return column;
   }
 
-  addRow(columnNames) {
+  addRow(columnNames, rowData = null) {
     let first = null;
     for (const name of columnNames) {
       const column = this.columns.find(col => col.name === name);
       if (!column) continue;
       
-      const node = new DLXNode();
+      const node = new DLXNode(null, rowData);
       node.column = column;
       
       const last = column.up;

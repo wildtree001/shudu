@@ -160,14 +160,14 @@ class SudokuCore {
     let cellsToRemove;
     switch (difficulty) {
       case 'easy':
-        cellsToRemove = 40;
+        cellsToRemove = 35;
         break;
       case 'hard':
-        cellsToRemove = 60;
+        cellsToRemove = 50;
         break;
       case 'medium':
       default:
-        cellsToRemove = 50;
+        cellsToRemove = 42;
         break;
     }
 
@@ -184,15 +184,20 @@ class SudokuCore {
     }
 
     let removed = 0;
+    let attempts = 0;
+    const maxAttempts = 500;
+
     for (const { row, col } of cells) {
-      if (removed >= cellsToRemove) break;
+      if (removed >= cellsToRemove || attempts >= maxAttempts) break;
+      if (puzzle[row][col] === 0) continue;
       
       const temp = puzzle[row][col];
       puzzle[row][col] = 0;
+      attempts++;
       
-      const solutions = this.solveWithDLX(puzzle, 2, consecutivePairs);
+      const hasUniqueSolution = this._hasUniqueSolution(puzzle, consecutivePairs);
       
-      if (solutions.length === 1) {
+      if (hasUniqueSolution) {
         removed++;
       } else {
         puzzle[row][col] = temp;
@@ -207,6 +212,53 @@ class SudokuCore {
     };
   }
 
+  _hasUniqueSolution(grid, consecutivePairs = null) {
+    let solutionCount = 0;
+    const gridCopy = this.cloneGrid(grid);
+    
+    const solve = () => {
+      let minCandidates = Infinity;
+      let bestRow = -1;
+      let bestCol = -1;
+      let bestCandidates = [];
+
+      for (let row = 0; row < this.size; row++) {
+        for (let col = 0; col < this.size; col++) {
+          if (gridCopy[row][col] === 0) {
+            const candidates = this.getCandidates(gridCopy, row, col, consecutivePairs);
+            if (candidates.length === 0) return false;
+            if (candidates.length < minCandidates) {
+              minCandidates = candidates.length;
+              bestRow = row;
+              bestCol = col;
+              bestCandidates = candidates;
+              if (minCandidates === 1) break;
+            }
+          }
+        }
+        if (minCandidates === 1) break;
+      }
+
+      if (bestRow === -1) {
+        solutionCount++;
+        return solutionCount >= 2;
+      }
+
+      for (const num of bestCandidates) {
+        gridCopy[bestRow][bestCol] = num;
+        if (solve()) {
+          return true;
+        }
+        gridCopy[bestRow][bestCol] = 0;
+      }
+
+      return false;
+    };
+
+    solve();
+    return solutionCount === 1;
+  }
+
   solveWithDLX(grid, maxSolutions = 1, consecutivePairs = null) {
     const dlx = new DLX();
     const constraints = this._buildConstraints(grid, consecutivePairs);
@@ -215,8 +267,8 @@ class SudokuCore {
       dlx.addColumn(constraint);
     }
     
-    for (const row of constraints.rows) {
-      dlx.addRow(row);
+    for (const rowData of constraints.rows) {
+      dlx.addRow(rowData.constraints, rowData.data);
     }
     
     const solutions = dlx.solve(maxSolutions);
@@ -224,8 +276,10 @@ class SudokuCore {
     return solutions.map(solution => {
       const result = this.createEmptyGrid();
       for (const node of solution) {
-        const [row, col, num] = this._decodeRow(node.column.name);
-        result[row][col] = num;
+        if (node.rowData) {
+          const { row, col, num } = node.rowData;
+          result[row][col] = num;
+        }
       }
       return result;
     });
@@ -271,7 +325,7 @@ class SudokuCore {
         if (grid[row][col] !== 0) {
           const num = grid[row][col];
           const box = this.getBox(row, col);
-          const rowConstraints = [
+          const constraintList = [
             `cell-${row}-${col}`,
             `row-${row}-${num}`,
             `col-${col}-${num}`,
@@ -279,16 +333,19 @@ class SudokuCore {
           ];
           
           if (this.type === SudokuType.DIAGONAL) {
-            if (row === col) rowConstraints.push(`diag1-${num}`);
-            if (row + col === this.size - 1) rowConstraints.push(`diag2-${num}`);
+            if (row === col) constraintList.push(`diag1-${num}`);
+            if (row + col === this.size - 1) constraintList.push(`diag2-${num}`);
           }
           
-          rows.push(rowConstraints);
+          rows.push({
+            constraints: constraintList,
+            data: { row, col, num }
+          });
         } else {
           for (let num = 1; num <= this.size; num++) {
             if (this.isValid(grid, row, col, num, consecutivePairs)) {
               const box = this.getBox(row, col);
-              const rowConstraints = [
+              const constraintList = [
                 `cell-${row}-${col}`,
                 `row-${row}-${num}`,
                 `col-${col}-${num}`,
@@ -296,11 +353,14 @@ class SudokuCore {
               ];
               
               if (this.type === SudokuType.DIAGONAL) {
-                if (row === col) rowConstraints.push(`diag1-${num}`);
-                if (row + col === this.size - 1) rowConstraints.push(`diag2-${num}`);
+                if (row === col) constraintList.push(`diag1-${num}`);
+                if (row + col === this.size - 1) constraintList.push(`diag2-${num}`);
               }
               
-              rows.push(rowConstraints);
+              rows.push({
+                constraints: constraintList,
+                data: { row, col, num }
+              });
             }
           }
         }
@@ -316,6 +376,98 @@ class SudokuCore {
       return [parseInt(parts[1]), parseInt(parts[2]), 0];
     }
     return [0, 0, 0];
+  }
+
+  solveWithBacktracking(grid, consecutivePairs = null) {
+    const result = this.cloneGrid(grid);
+    if (this._solveBacktracking(result, consecutivePairs)) {
+      return [result];
+    }
+    return [];
+  }
+
+  _solveBacktracking(grid, consecutivePairs = null) {
+    let minCandidates = Infinity;
+    let bestRow = -1;
+    let bestCol = -1;
+    let bestCandidates = [];
+
+    for (let row = 0; row < this.size; row++) {
+      for (let col = 0; col < this.size; col++) {
+        if (grid[row][col] === 0) {
+          const candidates = this.getCandidates(grid, row, col, consecutivePairs);
+          if (candidates.length === 0) return false;
+          if (candidates.length < minCandidates) {
+            minCandidates = candidates.length;
+            bestRow = row;
+            bestCol = col;
+            bestCandidates = candidates;
+            if (minCandidates === 1) break;
+          }
+        }
+      }
+      if (minCandidates === 1) break;
+    }
+
+    if (bestRow === -1) return true;
+
+    for (const num of bestCandidates) {
+      grid[bestRow][bestCol] = num;
+      if (this._solveBacktracking(grid, consecutivePairs)) {
+        return true;
+      }
+      grid[bestRow][bestCol] = 0;
+    }
+
+    return false;
+  }
+
+  countSolutions(grid, maxSolutions = 2, consecutivePairs = null) {
+    const gridCopy = this.cloneGrid(grid);
+    let count = 0;
+    this._countSolutions(gridCopy, maxSolutions, consecutivePairs, () => {
+      count++;
+      return count >= maxSolutions;
+    });
+    return count;
+  }
+
+  _countSolutions(grid, maxSolutions, consecutivePairs, callback) {
+    let minCandidates = Infinity;
+    let bestRow = -1;
+    let bestCol = -1;
+    let bestCandidates = [];
+
+    for (let row = 0; row < this.size; row++) {
+      for (let col = 0; col < this.size; col++) {
+        if (grid[row][col] === 0) {
+          const candidates = this.getCandidates(grid, row, col, consecutivePairs);
+          if (candidates.length === 0) return false;
+          if (candidates.length < minCandidates) {
+            minCandidates = candidates.length;
+            bestRow = row;
+            bestCol = col;
+            bestCandidates = candidates;
+            if (minCandidates === 1) break;
+          }
+        }
+      }
+      if (minCandidates === 1) break;
+    }
+
+    if (bestRow === -1) {
+      return callback();
+    }
+
+    for (const num of bestCandidates) {
+      grid[bestRow][bestCol] = num;
+      if (this._countSolutions(grid, maxSolutions, consecutivePairs, callback)) {
+        return true;
+      }
+      grid[bestRow][bestCol] = 0;
+    }
+
+    return false;
   }
 
   _encodeRow(row, col, num) {
