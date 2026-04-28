@@ -28,9 +28,19 @@
           </div>
 
           <div class="btn-group">
-            <button class="btn btn-primary" @click="startNewGame">
-              🎮 新游戏
+            <button class="btn btn-primary" @click="startNewGame" :disabled="isGenerating">
+              <span v-if="isGenerating">
+                <span class="spinner"></span> 生成中...
+              </span>
+              <span v-else>🎮 新游戏</span>
             </button>
+          </div>
+          
+          <div v-if="isGenerating" class="loading-overlay">
+            <div class="loading-content">
+              <div class="loading-spinner"></div>
+              <p>正在生成数独谜题...</p>
+            </div>
           </div>
         </div>
 
@@ -205,6 +215,7 @@ export default {
     const consecutivePairs = ref([]);
     const irregularRegions = ref(null);
     const sudokuGrid = ref(null);
+    const isGenerating = ref(false);
     
     let timer = null;
 
@@ -231,37 +242,49 @@ export default {
       }
     };
 
-    const startNewGame = () => {
-      initializeGame();
+    const startNewGame = async () => {
+      if (isGenerating.value) return;
       
-      const puzzle = sudokuCore.value.generatePuzzle(
-        difficulty.value,
-        selectedVariant.value === 'consecutive' ? consecutivePairs.value : null
-      );
+      isGenerating.value = true;
       
-      grid.value = puzzle.puzzle;
-      solution.value = puzzle.solution;
-      
-      fixedCells.value = [];
-      for (let row = 0; row < 9; row++) {
-        for (let col = 0; col < 9; col++) {
-          if (grid.value[row][col] !== 0) {
-            fixedCells.value.push(row * 9 + col);
+      try {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        initializeGame();
+        
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        const puzzle = sudokuCore.value.generatePuzzle(
+          difficulty.value,
+          selectedVariant.value === 'consecutive' ? consecutivePairs.value : null
+        );
+        
+        grid.value = puzzle.puzzle;
+        solution.value = puzzle.solution;
+        
+        fixedCells.value = [];
+        for (let row = 0; row < 9; row++) {
+          for (let col = 0; col < 9; col++) {
+            if (grid.value[row][col] !== 0) {
+              fixedCells.value.push(row * 9 + col);
+            }
           }
         }
+        
+        notes.value = createEmptyNotes();
+        errors.value = [];
+        selectedCell.value = null;
+        currentHint.value = null;
+        history.value = [];
+        isComplete.value = false;
+        isSolving.value = false;
+        showCelebration.value = false;
+        
+        resetTimer();
+        startTimer();
+      } finally {
+        isGenerating.value = false;
       }
-      
-      notes.value = Array(9).fill(null).map(() => Array(9).fill(null).map(() => []));
-      errors.value = [];
-      selectedCell.value = null;
-      currentHint.value = null;
-      history.value = [];
-      isComplete.value = false;
-      isSolving.value = false;
-      showCelebration.value = false;
-      
-      resetTimer();
-      startTimer();
     };
 
     const flatGrid = computed(() => {
@@ -658,6 +681,7 @@ export default {
       consecutivePairs,
       irregularRegions,
       sudokuGrid,
+      isGenerating,
       flatGrid,
       getCellClasses,
       selectCell,

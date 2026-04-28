@@ -160,21 +160,21 @@ class SudokuCore {
     let cellsToRemove;
     switch (difficulty) {
       case 'easy':
-        cellsToRemove = 35;
+        cellsToRemove = 30;
         break;
       case 'hard':
-        cellsToRemove = 50;
+        cellsToRemove = 45;
         break;
       case 'medium':
       default:
-        cellsToRemove = 42;
+        cellsToRemove = 38;
         break;
     }
 
     const cells = [];
     for (let row = 0; row < this.size; row++) {
       for (let col = 0; col < this.size; col++) {
-        cells.push({ row, col });
+        cells.push({ row, col, value: completeGrid[row][col] });
       }
     }
 
@@ -184,23 +184,28 @@ class SudokuCore {
     }
 
     let removed = 0;
-    let attempts = 0;
-    const maxAttempts = 500;
-
+    const removedCells = new Set();
+    
     for (const { row, col } of cells) {
-      if (removed >= cellsToRemove || attempts >= maxAttempts) break;
-      if (puzzle[row][col] === 0) continue;
+      if (removed >= cellsToRemove) break;
       
-      const temp = puzzle[row][col];
-      puzzle[row][col] = 0;
-      attempts++;
+      const key = `${row}-${col}`;
+      if (removedCells.has(key)) continue;
       
-      const hasUniqueSolution = this._hasUniqueSolution(puzzle, consecutivePairs);
+      const symmetricRow = this.size - 1 - row;
+      const symmetricCol = this.size - 1 - col;
+      const symmetricKey = `${symmetricRow}-${symmetricCol}`;
       
-      if (hasUniqueSolution) {
+      if (key === symmetricKey) {
+        puzzle[row][col] = 0;
+        removedCells.add(key);
         removed++;
-      } else {
-        puzzle[row][col] = temp;
+      } else if (!removedCells.has(symmetricKey)) {
+        puzzle[row][col] = 0;
+        puzzle[symmetricRow][symmetricCol] = 0;
+        removedCells.add(key);
+        removedCells.add(symmetricKey);
+        removed += 2;
       }
     }
 
@@ -210,6 +215,16 @@ class SudokuCore {
       difficulty,
       type: this.type
     };
+  }
+
+  async generatePuzzleAsync(difficulty = 'medium', consecutivePairs = null, onProgress = null) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const result = this.generatePuzzle(difficulty, consecutivePairs);
+        if (onProgress) onProgress(100);
+        resolve(result);
+      }, 50);
+    });
   }
 
   _hasUniqueSolution(grid, consecutivePairs = null) {
